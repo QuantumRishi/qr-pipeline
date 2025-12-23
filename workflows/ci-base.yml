@@ -1,0 +1,90 @@
+# QR Pipeline - Base CI Workflow
+# Reusable workflow for all QuantumRishi repositories
+# Usage: uses: QuantumRishi/qr-pipeline/.github/workflows/ci-base.yml@main
+
+name: CI Base
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version'
+        required: false
+        type: string
+        default: '20'
+      pnpm-version:
+        description: 'pnpm version'
+        required: false
+        type: string
+        default: '9'
+      working-directory:
+        description: 'Working directory'
+        required: false
+        type: string
+        default: '.'
+      run-tests:
+        description: 'Run tests'
+        required: false
+        type: boolean
+        default: true
+      run-lint:
+        description: 'Run linting'
+        required: false
+        type: boolean
+        default: true
+      run-typecheck:
+        description: 'Run type checking'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      NPM_TOKEN:
+        required: false
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: 🔐 Harden Runner
+        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
+        with:
+          egress-policy: audit
+
+      - name: 📥 Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@60ecd5dd545e0ff3b4a7ad3a7dcd866e9a06ee06 # v4.0.2
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'pnpm'
+          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+
+      - name: 📥 Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: 🔍 Lint
+        if: ${{ inputs.run-lint }}
+        run: pnpm lint
+
+      - name: 📝 Type check
+        if: ${{ inputs.run-typecheck }}
+        run: pnpm typecheck
+
+      - name: 🧪 Test
+        if: ${{ inputs.run-tests }}
+        run: pnpm test

@@ -1,0 +1,70 @@
+# QR Pipeline - Supabase Migration Workflow
+# Reusable workflow for running Supabase migrations
+# Usage: uses: QuantumRishi/qr-pipeline/.github/workflows/supabase-migrate.yml@main
+
+name: Supabase Migration
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment (staging/production)'
+        required: false
+        type: string
+        default: 'staging'
+      migrations-dir:
+        description: 'Migrations directory path'
+        required: false
+        type: string
+        default: 'supabase/migrations'
+    secrets:
+      SUPABASE_ACCESS_TOKEN:
+        required: true
+      SUPABASE_PROJECT_ID:
+        required: true
+      SUPABASE_DB_PASSWORD:
+        required: true
+
+jobs:
+  migrate:
+    name: Run Migrations
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: 🔐 Harden Runner
+        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
+        with:
+          egress-policy: audit
+
+      - name: 📥 Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: 📦 Setup Supabase CLI
+        uses: supabase/setup-cli@1.3.0
+        with:
+          version: latest
+
+      - name: 🔗 Link Supabase Project
+        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: 🗄️ Run Migrations
+        run: supabase db push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      - name: 📝 Generate Types
+        run: |
+          supabase gen types typescript --project-id ${{ secrets.SUPABASE_PROJECT_ID }} > src/types/database.ts
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: 📤 Upload Types Artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: supabase-types
+          path: src/types/database.ts
+          retention-days: 7
