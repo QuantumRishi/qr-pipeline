@@ -1,0 +1,6 @@
+# Pipeline infrastructure owners
+*                           @QuantumRishi/devops
+
+# Security-sensitive workflows
+workflows/deploy*.yml       @QuantumRishi/security @QuantumRishi/devops
+.github/                    @QuantumRishi/devops

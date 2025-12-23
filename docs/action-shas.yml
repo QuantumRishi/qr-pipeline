@@ -1,0 +1,31 @@
+# Action SHA Reference
+# Common action SHAs for pinning
+# qr-pipeline - QuantumRishi
+#
+# Update periodically using:
+#   gh api repos/OWNER/REPO/releases/latest --jq '.tag_name'
+#   gh api repos/OWNER/REPO/git/refs/tags/TAG --jq '.object.sha'
+
+# Core GitHub Actions
+actions/checkout: "692973e3d937129bcbf40652eb9f2f61becf3332" # v4.1.7
+actions/setup-node: "1e60f620b9541d16bece96c5465dc8ee9832be0b" # v4.0.3
+actions/upload-artifact: "89ef406dd8d7e03cfd12d9e0a4a378f454709029" # v4.3.5
+actions/download-artifact: "fa0a91b85d4f404e444e00e005971372dc801d16" # v4.1.8
+actions/cache: "0c45773b623bea8c8e75f6c82b208c3cf94ea4f9" # v4.0.2
+actions/configure-pages: "983d7736d9b0ae728b81ab479565c72886d7745b" # v5.0.0
+actions/upload-pages-artifact: "56afc609e74202658d3ffba0e8f6dda462b719fa" # v3.0.1
+actions/deploy-pages: "d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e" # v4.0.5
+actions/dependency-review-action: "5a2ce3f5b92ee19cbb1541a4984c76d921601d7c" # v4.3.4
+
+# Security
+step-security/harden-runner: "17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6" # v2.8.1
+github/codeql-action: "b611370bb5703a7efb587f9d136a52ea24c5c38c" # v3.25.11
+
+# Package Managers
+pnpm/action-setup: "fe02b34f77f8bc703788d5817da081398fad5dd2" # v4.0.0
+
+# Coverage
+codecov/codecov-action: "e28ff129e5465c2c0dcc6f003fc735cb6ae0c673" # v4.5.0
+
+# Notifications  
+slackapi/slack-github-action: "70cd7be8e40a46e8b0eced40b0de447bdb42f68e" # v1.26.0
