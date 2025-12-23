@@ -1,0 +1,5 @@
+# OpenDKIM Key Table
+# /etc/opendkim/KeyTable
+# Format: selector._domainkey.domain domain:selector:/path/to/key
+
+qr2024._domainkey.quantum-rishi.com quantum-rishi.com:qr2024:/etc/opendkim/keys/quantum-rishi.com/qr2024.private
