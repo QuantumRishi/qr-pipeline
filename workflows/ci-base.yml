@@ -1,4 +1,4 @@
-# QR Pipeline - Base CI Workflow
+# QR Pipeline - Base CI Workflow (Updated for Self-Hosted Runners)
 # Reusable workflow for all QuantumRishi repositories
 # Usage: uses: QuantumRishi/qr-pipeline/.github/workflows/ci-base.yml@main
 
@@ -37,6 +37,11 @@ on:
         required: false
         type: boolean
         default: true
+      use-self-hosted:
+        description: 'Use self-hosted runners'
+        required: false
+        type: boolean
+        default: false
     secrets:
       NPM_TOKEN:
         required: false
@@ -44,13 +49,14 @@ on:
 jobs:
   ci:
     name: CI
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.use-self-hosted && fromJSON('["self-hosted", "linux", "qr"]') || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
 
     steps:
       - name: 🔐 Harden Runner
+        if: ${{ !inputs.use-self-hosted }}
         uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
         with:
           egress-policy: audit

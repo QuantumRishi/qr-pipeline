@@ -1,0 +1,5 @@
+# OpenDKIM Signing Table
+# /etc/opendkim/SigningTable
+# Format: pattern key-name
+
+*@quantum-rishi.com qr2024._domainkey.quantum-rishi.com

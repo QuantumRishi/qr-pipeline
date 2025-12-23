@@ -1,0 +1,8 @@
+# OpenDKIM Trusted Hosts
+# /etc/opendkim/TrustedHosts
+
+127.0.0.1
+localhost
+::1
+mail.quantum-rishi.com
+*.quantum-rishi.com

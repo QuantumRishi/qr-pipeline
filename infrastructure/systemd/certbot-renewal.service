@@ -1,0 +1,8 @@
+[Unit]
+Description=Certbot SSL Certificate Renewal Service
+Documentation=https://certbot.eff.org
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --quiet --deploy-hook /etc/letsencrypt/renewal-hooks/deploy/reload-services.sh
+PrivateTmp=true
