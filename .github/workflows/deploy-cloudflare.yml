@@ -1,0 +1,97 @@
+# QR Pipeline - Cloudflare Workers/Pages Deployment
+# Reusable workflow for deploying to Cloudflare
+# Usage: uses: QuantumRishi/qr-pipeline/.github/workflows/deploy-cloudflare.yml@main
+
+name: Deploy to Cloudflare
+
+on:
+  workflow_call:
+    inputs:
+      type:
+        description: 'Deployment type (workers/pages)'
+        required: false
+        type: string
+        default: 'pages'
+      project-name:
+        description: 'Cloudflare project name'
+        required: true
+        type: string
+      directory:
+        description: 'Build output directory for Pages'
+        required: false
+        type: string
+        default: 'dist'
+      branch:
+        description: 'Git branch for preview deploys'
+        required: false
+        type: string
+        default: 'main'
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+    outputs:
+      deployment-url:
+        description: 'The deployment URL'
+        value: ${{ jobs.deploy.outputs.url }}
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: 🔐 Harden Runner
+        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6 # v2.8.1
+        with:
+          egress-policy: audit
+
+      - name: 📥 Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
+        with:
+          version: 9
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@60ecd5dd545e0ff3b4a7ad3a7dcd866e9a06ee06 # v4.0.2
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: 📥 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔨 Build
+        run: pnpm build
+
+      - name: 🚀 Deploy to Cloudflare Pages
+        if: ${{ inputs.type == 'pages' }}
+        id: deploy-pages
+        uses: cloudflare/wrangler-action@f84a562284fc78278ff9052435d9f22f9c90c557 # v3.7.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ${{ inputs.directory }} --project-name=${{ inputs.project-name }} --branch=${{ inputs.branch }}
+
+      - name: 🚀 Deploy to Cloudflare Workers
+        if: ${{ inputs.type == 'workers' }}
+        id: deploy-workers
+        uses: cloudflare/wrangler-action@f84a562284fc78278ff9052435d9f22f9c90c557 # v3.7.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+      - name: 📤 Output URL
+        id: deploy
+        run: |
+          if [ "${{ inputs.type }}" = "pages" ]; then
+            echo "url=https://${{ inputs.project-name }}.pages.dev" >> $GITHUB_OUTPUT
+          else
+            echo "url=https://${{ inputs.project-name }}.workers.dev" >> $GITHUB_OUTPUT
+          fi

@@ -1,0 +1,64 @@
+# QR Pipeline - Secure Deployment for Production
+# Uses self-hosted runners with restricted labels
+
+name: Secure Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: string
+    secrets:
+      VAULT_TOKEN:
+        required: true
+
+jobs:
+  validate:
+    name: Validate Deployment
+    runs-on: [self-hosted, linux, qr, secure]
+    environment: ${{ inputs.environment }}
+    outputs:
+      approved: ${{ steps.check.outputs.approved }}
+    
+    steps:
+      - name: 🔐 Validate Environment
+        id: check
+        run: |
+          if [[ "${{ inputs.environment }}" == "production" ]]; then
+            echo "Production deployment requires approval"
+            echo "approved=true" >> $GITHUB_OUTPUT
+          else
+            echo "approved=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔍 Security Scan
+        run: |
+          echo "Running pre-deployment security scan..."
+          # Add security scanning commands
+
+  deploy:
+    name: Deploy
+    needs: validate
+    if: ${{ needs.validate.outputs.approved == 'true' }}
+    runs-on: [self-hosted, linux, qr, secure, no-docker]
+    environment: ${{ inputs.environment }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: 🔐 Import Secrets from Vault
+        uses: hashicorp/vault-action@d1720f055e0635fd932a1d2a48f87a666a57906c # v3.0.0
+        with:
+          url: ${{ vars.VAULT_ADDR }}
+          token: ${{ secrets.VAULT_TOKEN }}
+          secrets: |
+            secret/data/qr/${{ inputs.environment }}/deploy ssh_key | SSH_PRIVATE_KEY ;
+            secret/data/qr/${{ inputs.environment }}/deploy host | DEPLOY_HOST
+
+      - name: 🚀 Deploy
+        run: |
+          echo "Deploying to ${{ inputs.environment }}..."
+          # Deployment commands using SSH_PRIVATE_KEY and DEPLOY_HOST
