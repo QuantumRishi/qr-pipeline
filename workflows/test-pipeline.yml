@@ -173,9 +173,12 @@ jobs:
           echo "**SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
       
       - name: Slack Notification (if configured)
-        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        if: ${{ env.SLACK_CONFIGURED == 'true' }}
+        env:
+          SLACK_CONFIGURED: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+          curl -X POST "$SLACK_WEBHOOK_URL" \
             -H 'Content-Type: application/json' \
             -d '{
               "text": "CI/CD Pipeline Test Complete",
