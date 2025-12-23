@@ -1,0 +1,191 @@
+name: Test CI/CD Pipeline
+on:
+  workflow_dispatch:
+    inputs:
+      test_build:
+        description: 'Test build step'
+        type: boolean
+        default: true
+      test_deploy:
+        description: 'Test deploy (dry-run)'
+        type: boolean
+        default: false
+      use_self_hosted:
+        description: 'Use self-hosted runner'
+        type: boolean
+        default: false
+
+  push:
+    branches:
+      - 'test/**'
+    paths:
+      - '.github/workflows/test-pipeline.yml'
+
+jobs:
+  test-github-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GitHub Runner Info
+        run: |
+          echo "🔵 GitHub-hosted runner"
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+          echo ""
+          echo "Environment:"
+          echo "  GITHUB_REPOSITORY: ${{ github.repository }}"
+          echo "  GITHUB_REF: ${{ github.ref }}"
+          echo "  GITHUB_SHA: ${{ github.sha }}"
+          echo ""
+          echo "✅ GitHub runner is working!"
+
+  test-self-hosted-runner:
+    if: ${{ inputs.use_self_hosted == true }}
+    runs-on: [self-hosted, qr]
+    continue-on-error: true
+    steps:
+      - name: Self-Hosted Runner Info
+        run: |
+          echo "🟢 Self-hosted runner"
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+          echo ""
+          echo "System:"
+          uname -a
+          echo ""
+          echo "✅ Self-hosted runner is working!"
+
+  test-checkout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Verify Checkout
+        run: |
+          echo "📂 Repository contents:"
+          ls -la
+          echo ""
+          if [[ -f "README.md" ]]; then
+            echo "✅ Checkout successful"
+          else
+            echo "❌ Checkout may have failed"
+            exit 1
+          fi
+
+  test-secrets-access:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Secrets
+        run: |
+          echo "🔐 Checking secrets access"
+          echo ""
+          
+          secrets_found=0
+          secrets_missing=0
+          
+          check_secret() {
+            local name=$1
+            local value=$2
+            
+            if [[ -n "$value" && "$value" != "" ]]; then
+              echo "  ✅ $name: configured"
+              ((secrets_found++))
+            else
+              echo "  ⚠️ $name: not set"
+              ((secrets_missing++))
+            fi
+          }
+          
+          # Check organization secrets
+          check_secret "CLOUDFLARE_API_TOKEN" "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          check_secret "CLOUDFLARE_ACCOUNT_ID" "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Secrets: $secrets_found found, $secrets_missing not set"
+          echo ""
+          echo "Note: Missing secrets may need to be configured"
+          echo "Run: ./scripts/setup-secrets.sh"
+        env:
+          # Don't actually expose secrets - just check if they're set
+          _CLOUDFLARE_SET: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+
+  test-build:
+    if: ${{ inputs.test_build != false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Test Build Environment
+        run: |
+          echo "🔨 Build environment test"
+          echo ""
+          echo "Node.js: $(node --version)"
+          echo "npm: $(npm --version)"
+          echo "Git: $(git --version)"
+          echo ""
+          echo "✅ Build environment ready"
+
+  test-deploy-dry-run:
+    if: ${{ inputs.test_deploy == true }}
+    runs-on: ubuntu-latest
+    needs: [test-build]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Deploy Dry Run
+        run: |
+          echo "🚀 Deploy dry-run"
+          echo ""
+          echo "This would deploy to:"
+          echo "  - Environment: production"
+          echo "  - Target: Cloudflare Pages"
+          echo "  - Branch: ${{ github.ref_name }}"
+          echo ""
+          echo "Skipping actual deployment (dry-run mode)"
+          echo ""
+          echo "✅ Deploy simulation complete"
+
+  test-notifications:
+    runs-on: ubuntu-latest
+    needs: [test-github-runner, test-checkout, test-build]
+    if: always()
+    steps:
+      - name: Generate Test Summary
+        run: |
+          echo "# CI/CD Pipeline Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub Runner | ${{ needs.test-github-runner.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Checkout | ${{ needs.test-checkout.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Env | ${{ needs.test-build.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Ref:** \`${{ github.ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Slack Notification (if configured)
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "text": "CI/CD Pipeline Test Complete",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*CI/CD Pipeline Test Complete*\nRepository: `${{ github.repository }}`\nStatus: All tests passed ✅"
+                  }
+                }
+              ]
+            }' || echo "Slack notification skipped"

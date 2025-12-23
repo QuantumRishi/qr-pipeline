@@ -1,0 +1,277 @@
+name: Verify Infrastructure
+on:
+  workflow_dispatch:
+    inputs:
+      check_dns:
+        description: 'Verify DNS records'
+        type: boolean
+        default: true
+      check_ssl:
+        description: 'Verify SSL certificates'
+        type: boolean
+        default: true
+      check_mail:
+        description: 'Verify mail configuration'
+        type: boolean
+        default: true
+      check_runner:
+        description: 'Verify self-hosted runner'
+        type: boolean
+        default: true
+
+  schedule:
+    # Run daily at 6 AM UTC
+    - cron: '0 6 * * *'
+
+jobs:
+  verify-dns:
+    if: ${{ inputs.check_dns != false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check DNS Records
+        run: |
+          echo "🔍 Checking DNS records for quantum-rishi.com"
+          echo ""
+          
+          DOMAIN="quantum-rishi.com"
+          PASS=0
+          FAIL=0
+          
+          check_record() {
+            local type=$1
+            local name=$2
+            local expected=$3
+            
+            result=$(dig +short $type "$name" 2>/dev/null || echo "NXDOMAIN")
+            
+            if [[ -n "$result" && "$result" != "NXDOMAIN" ]]; then
+              echo "✅ $type $name → $result"
+              ((PASS++))
+            else
+              echo "❌ $type $name → NOT FOUND"
+              ((FAIL++))
+            fi
+          }
+          
+          echo "A Records:"
+          check_record A "app.${DOMAIN}"
+          check_record A "api.${DOMAIN}"
+          check_record A "mail.${DOMAIN}"
+          check_record A "docs.${DOMAIN}"
+          
+          echo ""
+          echo "MX Record:"
+          check_record MX "${DOMAIN}"
+          
+          echo ""
+          echo "Email Authentication:"
+          check_record TXT "${DOMAIN}" "spf"
+          check_record TXT "_dmarc.${DOMAIN}" "dmarc"
+          check_record TXT "_mta-sts.${DOMAIN}" "sts"
+          
+          echo ""
+          echo "DKIM:"
+          # Check common selectors
+          for selector in qr202501 qr202506 default; do
+            result=$(dig +short TXT "${selector}._domainkey.${DOMAIN}" 2>/dev/null)
+            if [[ -n "$result" ]]; then
+              echo "✅ DKIM selector: ${selector}"
+              break
+            fi
+          done
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "DNS Check: $PASS passed, $FAIL failed"
+          
+          if [[ $FAIL -gt 0 ]]; then
+            exit 1
+          fi
+
+  verify-ssl:
+    if: ${{ inputs.check_ssl != false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSL Certificates
+        run: |
+          echo "🔒 Checking SSL certificates"
+          echo ""
+          
+          DOMAIN="quantum-rishi.com"
+          PASS=0
+          FAIL=0
+          
+          check_ssl() {
+            local host=$1
+            local port=${2:-443}
+            
+            echo "Checking $host:$port..."
+            
+            # Get certificate info
+            cert_info=$(echo | timeout 10 openssl s_client -connect "$host:$port" -servername "$host" 2>/dev/null | openssl x509 -noout -dates -subject 2>/dev/null || echo "FAIL")
+            
+            if [[ "$cert_info" != "FAIL" ]]; then
+              expiry=$(echo "$cert_info" | grep "notAfter" | cut -d= -f2)
+              expiry_epoch=$(date -d "$expiry" +%s 2>/dev/null || echo "0")
+              now_epoch=$(date +%s)
+              days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+              
+              if [[ $days_left -gt 30 ]]; then
+                echo "  ✅ Valid, expires in $days_left days"
+                ((PASS++))
+              elif [[ $days_left -gt 0 ]]; then
+                echo "  ⚠️ Expiring soon: $days_left days left"
+                ((PASS++))
+              else
+                echo "  ❌ Expired or invalid"
+                ((FAIL++))
+              fi
+            else
+              echo "  ❌ Could not connect or get certificate"
+              ((FAIL++))
+            fi
+          }
+          
+          check_ssl "app.${DOMAIN}" 443
+          check_ssl "api.${DOMAIN}" 443
+          check_ssl "mail.${DOMAIN}" 993
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "SSL Check: $PASS passed, $FAIL failed"
+          
+          # Don't fail the job for SSL issues on new setup
+          echo "status=$FAIL" >> $GITHUB_OUTPUT
+
+  verify-mail:
+    if: ${{ inputs.check_mail != false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Mail Server
+        run: |
+          echo "📧 Checking mail server configuration"
+          echo ""
+          
+          DOMAIN="quantum-rishi.com"
+          
+          # Check MX record
+          echo "MX Record:"
+          mx=$(dig +short MX "$DOMAIN" | head -1)
+          if [[ -n "$mx" ]]; then
+            echo "  ✅ MX: $mx"
+          else
+            echo "  ❌ No MX record found"
+          fi
+          
+          # Check SPF
+          echo ""
+          echo "SPF Record:"
+          spf=$(dig +short TXT "$DOMAIN" | grep -i "v=spf1" || echo "")
+          if [[ -n "$spf" ]]; then
+            echo "  ✅ SPF: $spf"
+          else
+            echo "  ❌ No SPF record found"
+          fi
+          
+          # Check DMARC
+          echo ""
+          echo "DMARC Record:"
+          dmarc=$(dig +short TXT "_dmarc.$DOMAIN" | grep -i "v=DMARC1" || echo "")
+          if [[ -n "$dmarc" ]]; then
+            echo "  ✅ DMARC: $dmarc"
+          else
+            echo "  ❌ No DMARC record found"
+          fi
+          
+          # Check SMTP connectivity
+          echo ""
+          echo "SMTP Connectivity:"
+          if nc -zw3 "mail.$DOMAIN" 25 2>/dev/null; then
+            echo "  ✅ Port 25 (SMTP) open"
+          else
+            echo "  ⚠️ Port 25 (SMTP) not reachable"
+          fi
+          
+          if nc -zw3 "mail.$DOMAIN" 587 2>/dev/null; then
+            echo "  ✅ Port 587 (Submission) open"
+          else
+            echo "  ⚠️ Port 587 (Submission) not reachable"
+          fi
+          
+          if nc -zw3 "mail.$DOMAIN" 993 2>/dev/null; then
+            echo "  ✅ Port 993 (IMAPS) open"
+          else
+            echo "  ⚠️ Port 993 (IMAPS) not reachable"
+          fi
+
+  verify-runner:
+    if: ${{ inputs.check_runner != false }}
+    runs-on: [self-hosted, qr]
+    continue-on-error: true
+    steps:
+      - name: Runner Health Check
+        run: |
+          echo "🏃 Self-hosted runner verification"
+          echo ""
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+          echo "Architecture: ${{ runner.arch }}"
+          echo ""
+          echo "System Info:"
+          uname -a
+          echo ""
+          echo "Memory:"
+          free -h
+          echo ""
+          echo "Disk:"
+          df -h /
+          echo ""
+          echo "✅ Runner is operational!"
+
+  verify-runner-fallback:
+    if: ${{ inputs.check_runner != false }}
+    needs: verify-runner
+    runs-on: ubuntu-latest
+    if: ${{ failure() }}
+    steps:
+      - name: Runner Not Available
+        run: |
+          echo "⚠️ Self-hosted runner with label 'qr' is not available"
+          echo ""
+          echo "To set up a runner:"
+          echo "1. Go to: https://github.com/organizations/QuantumRishi/settings/actions/runners/new"
+          echo "2. Follow the instructions to install the runner"
+          echo "3. Configure with labels: qr, secure, no-docker"
+
+  summary:
+    needs: [verify-dns, verify-ssl, verify-mail]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# Infrastructure Verification Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.verify-dns.result }}" == "success" ]]; then
+            echo "| DNS Records | ✅ Pass |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| DNS Records | ❌ Fail |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.verify-ssl.result }}" == "success" ]]; then
+            echo "| SSL Certificates | ✅ Pass |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| SSL Certificates | ⚠️ Check |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.verify-mail.result }}" == "success" ]]; then
+            echo "| Mail Server | ✅ Pass |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Mail Server | ⚠️ Check |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
