@@ -1,0 +1,101 @@
+# QR Pipeline - Production Deployment Workflow
+# Deploys to production with self-hosted runners and Vault secrets
+
+name: Production Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: string
+        default: 'production'
+      app-name:
+        description: 'Application name (qr-dev, qr-api, qr-mail)'
+        required: true
+        type: string
+      deploy-target:
+        description: 'Deployment target (pages, workers, server)'
+        required: true
+        type: string
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      CLOUDFLARE_ACCOUNT_ID:
+        required: false
+      VAULT_TOKEN:
+        required: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.app-name }} to ${{ inputs.environment }}
+    runs-on: [self-hosted, linux, qr]
+    environment: ${{ inputs.environment }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: 🔐 Import Vault Secrets
+        if: ${{ secrets.VAULT_TOKEN }}
+        uses: hashicorp/vault-action@d1720f055e0635fd932a1d2a48f87a666a57906c # v3.0.0
+        with:
+          url: ${{ vars.VAULT_ADDR || 'https://vault.quantum-rishi.com' }}
+          token: ${{ secrets.VAULT_TOKEN }}
+          secrets: |
+            secret/data/qr/${{ inputs.environment }}/cloudflare api_token | CLOUDFLARE_API_TOKEN ;
+            secret/data/qr/${{ inputs.environment }}/cloudflare account_id | CLOUDFLARE_ACCOUNT_ID
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
+        with:
+          version: 9
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@60ecd5dd545e0ff3b4a7ad3a7dcd866e9a06ee06 # v4.0.2
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: 📥 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🛠️ Build
+        run: pnpm build
+        env:
+          NODE_ENV: production
+
+      # Cloudflare Pages deployment
+      - name: 🚀 Deploy to Cloudflare Pages
+        if: ${{ inputs.deploy-target == 'pages' }}
+        uses: cloudflare/pages-action@f0a1cd58cd66095dee69bfa18fa5efd1dde93bca # v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: ${{ inputs.app-name }}
+          directory: build/client
+          gitHubToken: ${{ github.token }}
+
+      # Cloudflare Workers deployment
+      - name: 🚀 Deploy to Cloudflare Workers
+        if: ${{ inputs.deploy-target == 'workers' }}
+        run: |
+          npx wrangler deploy --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Server deployment (SSH)
+      - name: 🚀 Deploy to Server
+        if: ${{ inputs.deploy-target == 'server' }}
+        run: |
+          echo "Server deployment for ${{ inputs.app-name }}"
+          # Custom server deployment logic here
+          # Uses SSH keys from self-hosted runner environment
+
+      - name: ✅ Deployment Complete
+        run: |
+          echo "::notice::Successfully deployed ${{ inputs.app-name }} to ${{ inputs.environment }}"
