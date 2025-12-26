@@ -83,24 +83,6 @@ jobs:
           secrets_found=0
           secrets_missing=0
           
-          check_secret() {
-            local name=$1
-            local value=$2
-            local required=${3:-true}
-            
-            if [[ -n "$value" && "$value" != "" ]]; then
-              echo "  ✅ $name: configured"
-              ((secrets_found++))
-            else
-              if [[ "$required" == "true" ]]; then
-                echo "  ❌ $name: not set (required)"
-                ((secrets_missing++))
-              else
-                echo "  ⚠️ $name: not set (optional)"
-              fi
-            fi
-          }
-          
           # Check organization secrets
           if [[ "${{ secrets.CLOUDFLARE_API_TOKEN != '' }}" == "true" ]]; then
             echo "  ✅ CLOUDFLARE_API_TOKEN: configured"
