@@ -102,8 +102,20 @@ jobs:
           }
           
           # Check organization secrets
-          check_secret "CLOUDFLARE_API_TOKEN" "${{ secrets.CLOUDFLARE_API_TOKEN }}" true
-          check_secret "CLOUDFLARE_ACCOUNT_ID" "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" false
+          if [[ "${{ secrets.CLOUDFLARE_API_TOKEN != '' }}" == "true" ]]; then
+            echo "  ✅ CLOUDFLARE_API_TOKEN: configured"
+            ((secrets_found++))
+          else
+            echo "  ❌ CLOUDFLARE_API_TOKEN: not set (required)"
+            ((secrets_missing++))
+          fi
+          
+          if [[ "${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}" == "true" ]]; then
+            echo "  ✅ CLOUDFLARE_ACCOUNT_ID: configured"
+            ((secrets_found++))
+          else
+            echo "  ⚠️ CLOUDFLARE_ACCOUNT_ID: not set (optional)"
+          fi
           
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
