@@ -1,0 +1,9 @@
+﻿DKIM DNS Record for quantum-rishi.com
+Generated: 2025-12-26 11:41:16 UTC
+Selector: qr202501
+
+Record Type: TXT
+Name: qr202501._domainkey
+Content: v=DKIM1; k=rsa; p=
+
+Full record name: qr202501._domainkey.quantum-rishi.com
