@@ -122,8 +122,11 @@ jobs:
           echo "Secrets: $secrets_found found, $secrets_missing missing"
           echo ""
           if [[ $secrets_missing -gt 0 ]]; then
-            echo "Note: Some optional secrets may be missing"
+            echo "Note: Some required secrets are missing"
             echo "Run: ./scripts/setup-secrets.sh"
+            exit 1
+          else
+            echo "✅ All required secrets are configured!"
           fi
         env:
           # Don't actually expose secrets - just check if they're set
